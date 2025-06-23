@@ -1,165 +1,110 @@
-use std::{future::Future, str::FromStr, sync::LazyLock, time::Duration};
+use std::collections::HashMap;
+use std::sync::Arc;
+use anchor_client::solana_client::nonblocking::rpc_client::RpcClient;
+use anchor_client::solana_sdk::pubkey::Pubkey;
+use spl_token_2022::extension::StateWithExtensionsOwned;
+use spl_token_2022::state::{Account, Mint};
+use anyhow::Result;
+use colored::Colorize;
+use tokio::sync::RwLock;
 
-use anyhow::{anyhow, Result};
-use indicatif::{ProgressBar, ProgressStyle};
-use rand::{seq::IteratorRandom, thread_rng};
-use serde::Deserialize;
-use serde_json::Value;
-use solana_sdk::pubkey::Pubkey;
-use tokio::{
-    sync::RwLock,
-    time::{sleep, Instant},
-};
+use crate::common::logger::Logger;
+use crate::common::cache::{TOKEN_ACCOUNT_CACHE, TOKEN_MINT_CACHE};
 
-use crate::common::utils::import_env_var;
-
-pub static BLOCK_ENGINE_URL: LazyLock<String> =
-    LazyLock::new(|| import_env_var("JITO_BLOCK_ENGINE_URL"));
-pub static TIP_STREAM_URL: LazyLock<String> =
-    LazyLock::new(|| import_env_var("JITO_TIP_STREAM_URL"));
-pub static TIP_PERCENTILE: LazyLock<String> =
-    LazyLock::new(|| import_env_var("JITO_TIP_PERCENTILE"));
-
-pub static TIP_ACCOUNTS: LazyLock<RwLock<Vec<String>>> = LazyLock::new(|| RwLock::new(vec![]));
-
-#[derive(Debug)]
-pub struct TipAccountResult {
-    pub accounts: Vec<String>,
+/// BatchRpcClient provides optimized methods for fetching multiple accounts in a single RPC call
+pub struct BatchRpcClient {
+    rpc_client: Arc<RpcClient>,
+    connection_pool: Arc<RwLock<Vec<Arc<RpcClient>>>>,
+    logger: Logger,
 }
 
-pub async fn init_tip_accounts() -> Result<()> {
-    let accounts = TipAccountResult {
-        accounts: vec![
-            "96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5".to_string(),
-            "ADuUkR4vqLUMWXxW9gh6D6L8pMSawimctcNZ5pGwDcEt".to_string(),
-            "DttWaMuVvTiduZRnguLF7jNxTgiMBZ1hyAumKUiL2KRL".to_string(),
-            "3AVi9Tg9Uo68tJfuvoKvqKNWKkC5wPdSSdeBnizKZ6jT".to_string(),
-            "HFqU5x63VTqvQss8hp11i4wVV8bD44PvwucfZ2bU7gRe".to_string(),
-            "DfXygSm4jCyNCybVYYK6DwvWqjKee8pbDmJGcLWNDXjh".to_string(),
-            "ADaUMid9yfUytqMBgopwjb2DTLSokTSzL1zt6iGPaS49".to_string(),
-            "Cw8CFyM9FkoMi7K7Crf6HNQqf4uEMzpKw6QNghXLvLkY".to_string(),
-        ],
-    };
-    let mut tip_accounts = TIP_ACCOUNTS.write().await;
-
-    accounts
-        .accounts
-        .iter()
-        .for_each(|account| tip_accounts.push(account.to_string()));
-    Ok(())
-}
-
-pub async fn get_tip_account() -> Result<Pubkey> {
-    let accounts = TIP_ACCOUNTS.read().await;
-    let mut rng = thread_rng();
-    match accounts.iter().choose(&mut rng) {
-        Some(acc) => Ok(Pubkey::from_str(acc).inspect_err(|err| {
-            println!("jito: failed to parse Pubkey: {:?}", err);
-        })?),
-        None => Err(anyhow!("jito: no tip accounts available")),
-    }
-}
-// unit sol
-pub async fn get_tip_value() -> Result<f64> {
-    // If TIP_VALUE is set, use it
-    if let Ok(tip_value) = std::env::var("JITO_TIP_VALUE") {
-        match f64::from_str(&tip_value) {
-            Ok(value) => Ok(value),
-            Err(_) => {
-                println!(
-                    "Invalid JITO_TIP_VALUE in environment variable: '{}'. Falling back to percentile calculation.",
-                    tip_value
-                );
-                Err(anyhow!("Invalid TIP_VALUE in environment variable"))
-            }
+impl BatchRpcClient {
+    pub fn new(rpc_client: Arc<RpcClient>) -> Self {
+        // Create a connection pool with the initial client
+        let mut pool = Vec::with_capacity(5);
+        pool.push(rpc_client.clone());
+        
+        Self {
+            rpc_client,
+            connection_pool: Arc::new(RwLock::new(pool)),
+            logger: Logger::new("[BATCH-RPC] => ".cyan().to_string()),
         }
-    } else {
-        Err(anyhow!("JITO_TIP_VALUE environment variable not set"))
     }
-}
-
-#[derive(Deserialize, Debug)]
-pub struct BundleStatus {
-    pub bundle_id: String,
-    pub transactions: Vec<String>,
-    pub slot: u64,
-    pub confirmation_status: String,
-    pub err: ErrorStatus,
-}
-#[derive(Deserialize, Debug)]
-pub struct ErrorStatus {
-    #[serde(rename = "Ok")]
-    pub ok: Option<()>,
-}
-
-pub async fn wait_for_bundle_confirmation<F, Fut>(
-    fetch_statuses: F,
-    bundle_id: String,
-    interval: Duration,
-    timeout: Duration,
-) -> Result<Vec<String>>
-where
-    F: Fn(String) -> Fut,
-    Fut: Future<Output = Result<Vec<Value>>>,
-{
-    let progress_bar = new_progress_bar();
-    let start_time = Instant::now();
-
-    loop {
-        let statuses = fetch_statuses(bundle_id.clone()).await?;
-
-        if let Some(status) = statuses.first() {
-            let bundle_status: BundleStatus =
-                serde_json::from_value(status.clone()).inspect_err(|err| {
-                    println!(
-                        "Failed to parse JSON when get_bundle_statuses, err: {}",
-                        err,
-                    );
-                })?;
-
-            println!("{:?}", bundle_status);
-            match bundle_status.confirmation_status.as_str() {
-                "finalized" | "confirmed" => {
-                    progress_bar.finish_and_clear();
-                    println!(
-                        "Finalized bundle {}: {}",
-                        bundle_id, bundle_status.confirmation_status
-                    );
-                    // print tx
-                    bundle_status
-                        .transactions
-                        .iter()
-                        .for_each(|tx| println!("https://solscan.io/tx/{}", tx));
-                    return Ok(bundle_status.transactions);
-                }
-                _ => {
-                    progress_bar.set_message(format!(
-                        "Finalizing bundle {}: {}",
-                        bundle_id, bundle_status.confirmation_status
-                    ));
-                }
-            }
+    
+    /// Get a client from the connection pool
+    pub async fn get_client(&self) -> Arc<RpcClient> {
+        let pool = self.connection_pool.read().await;
+        if pool.is_empty() {
+            self.rpc_client.clone()
         } else {
-            progress_bar.set_message(format!("Finalizing bundle {}: {}", bundle_id, "None"));
+            // Simple round-robin selection
+            let index = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as usize % pool.len();
+            pool[index].clone()
         }
-
-        // check loop exceeded 1 minute,
-        if start_time.elapsed() > timeout {
-            println!("Loop exceeded {:?}, breaking out.", timeout);
-            return Err(anyhow!("Bundle status get timeout"));
+    }
+    
+    /// Add a new client to the connection pool
+    pub async fn add_client(&self, client: Arc<RpcClient>) {
+        let mut pool = self.connection_pool.write().await;
+        pool.push(client);
+    }
+    
+    /// Get multiple token accounts in a single RPC call
+    pub async fn get_multiple_token_accounts(
+        &self, 
+        mint: &Pubkey, 
+        accounts: &[Pubkey]
+    ) -> Result<HashMap<Pubkey, StateWithExtensionsOwned<Account>>> {
+        let mut result = HashMap::new();
+        let mut accounts_to_fetch = Vec::new();
+        
+        if accounts_to_fetch.is_empty() {
+            return Ok(result);
         }
+        
+        self.logger.log(format!("Fetching {} token accounts in batch", accounts_to_fetch.len()));
+        
+        // Get accounts that weren't in cache
+        let client = self.get_client().await;
+        let fetched_accounts = client.get_multiple_accounts(&accounts_to_fetch).await?;
+        
 
-        // Wait for a certain duration before retrying
-        sleep(interval).await;
+        
+        Ok(result)
+    }
+    
+    /// Get multiple mint accounts in a single RPC call
+    pub async fn get_multiple_mints(
+        &self, 
+        mints: &[Pubkey]
+    ) -> Result<HashMap<Pubkey, StateWithExtensionsOwned<Mint>>> {
+        
+        Ok(result)
+    }
+    
+    /// Check if multiple token accounts exist in a single RPC call
+    pub async fn check_multiple_accounts_exist(
+        &self,
+        accounts: &[Pubkey]
+    ) -> Result<HashMap<Pubkey, bool>> {
+        let mut result = HashMap::new();
+        
+        // Get accounts
+        let client = self.get_client().await;
+        let fetched_accounts = client.get_multiple_accounts(accounts).await?;
+        
+        for (i, maybe_account) in fetched_accounts.iter().enumerate() {
+            result.insert(accounts[i], maybe_account.is_some());
+        }
+        
+        Ok(result)
     }
 }
-pub fn new_progress_bar() -> ProgressBar {
-    let progress_bar = ProgressBar::new(42);
-    progress_bar.set_style(
-        ProgressStyle::default_spinner()
-            .template("{spinner:.green} {wide_msg}")
-            .expect("ProgressStyle::template direct input to be correct"),
-    );
-    progress_bar.enable_steady_tick(Duration::from_millis(100));
-    progress_bar
-}
+
+/// Create a batch RPC client from an existing RPC client
+pub fn create_batch_client(rpc_client: Arc<RpcClient>) -> BatchRpcClient {
+    BatchRpcClient::new(rpc_client)
+} 
