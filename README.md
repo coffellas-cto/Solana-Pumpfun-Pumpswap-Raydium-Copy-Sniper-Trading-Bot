@@ -1,6 +1,4 @@
-# Solana Copy Trading Bot (Fast Copy Trading in 0-1 Block)
-
-https://github.com/user-attachments/assets/3e5c7d40-217d-4c3c-aef9-224bc4878997
+# Solana Copy Trading Bot (Fast Copy Trading in 0 Block)   [@coffellas](https://t.me/coffellas)
 
 ## Overview
 
