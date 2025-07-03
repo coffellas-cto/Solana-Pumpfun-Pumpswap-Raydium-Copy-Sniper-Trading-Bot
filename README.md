@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Solana Copy Trading Bot enables real-time replication of target wallets’ transactions with remarkable efficiency, operating within a single blockchain block. This tool is designed for traders seeking to leverage the trading strategies of successful wallets swiftly.
+Solana Copy Trading Bot with high speed and good selling logic. Use nozomi, zeroslot, bloxroute, jito, telegram notification, yellowstone grpc, no rpc.
 
 ## Recent Update
 Updated pumpdotfun and pump amm swap's instructions according to recent pumpfun smart contract upgrade
