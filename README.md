@@ -46,6 +46,55 @@ Send Transactions to multiple tx confim providers like jito, nextBlock, BloxRout
 - **Geyser Usage**: Available to use Helius or yellowstone Geyser. (Yellowstone is faster)
 
 - **Manual Sell**: Able to manually sell if you wanna sell it any time
+
+```mermaid
+flowchart TD
+    A[Transaction Received] --> B[detect_transaction_type]
+    B --> C{Transaction Type?}
+    
+    C -->|Migration| D[Migration Detected]
+    C -->|TokenMint| E[Token Mint + Dev Buy Check]
+    C -->|PumpFun/PumpSwap Buy/Sell| F[Buy/Sell Transaction]
+    C -->|Unknown| G[Skip Transaction]
+    
+    D --> H[should_focus = true<br/>focus_reason = Migration]
+    E --> I{Dev Buy >= Threshold?}
+    I -->|Yes| J[should_focus = true<br/>focus_reason = DevBuyAboveThreshold]
+    I -->|No| K[should_focus = true<br/>New token detected]
+    
+    F --> L{Already in Focus List?}
+    L -->|Yes| M[should_focus = true<br/>Continue monitoring]
+    L -->|No| N{Large Buy >= Threshold?}
+    N -->|Yes| O[should_focus = true<br/>focus_reason = DevBuyAboveThreshold]
+    N -->|No| P[should_focus = false<br/>Skip transaction]
+    
+    H --> Q[handle_enhanced_transaction]
+    J --> Q
+    K --> Q
+    M --> Q
+    O --> Q
+    
+    Q --> R{should_focus = true?}
+    R -->|Yes| S[Add to FOCUS_TOKEN_LIST<br/>Initialize price tracking]
+    R -->|No| T[Skip processing]
+    
+    S --> U[Monitor for Buy Signals]
+    U --> V{Buy Signal Detected?}
+    V -->|DramaticRise| W[Execute Buy: buy_amount_rising SOL]
+    V -->|DropStableRise| X[Execute Buy: buy_amount_recovery SOL]
+    V -->|TimeSeriesReversal| Y[Execute Buy: buy_amount_recovery SOL]
+    V -->|No Signal| Z[Continue Monitoring]
+    
+    style D fill:#90EE90
+    style J fill:#FFD700
+    style O fill:#FFD700
+    style S fill:#98FB98
+    style W fill:#FF6B6B
+    style X fill:#4ECDC4
+    style Y fill:#9B59B6
+
+```
+
 ## Installation
 
 To set up the Solana PumpFun Sniper Bot, please follow these instructions:
