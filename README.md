@@ -134,6 +134,49 @@ graph TD
     style P fill:#f3e5f5
 
 ```
+
+```mermaid
+graph TD
+    A[Token Purchase] --> B[Initialize Token for Selling]
+    B --> C[Dynamic Selling Engine]
+    C --> D{Market Condition Detection}
+    
+    D --> E[BullRun - Increase Targets]
+    D --> F[BearTrend - Reduce Targets]
+    D --> G[Sideways - Standard Strategy]
+    D --> H[HighVolatility - Tighter Stops]
+    
+    E --> I[Progressive Selling Decision]
+    F --> I
+    G --> I
+    H --> I
+    
+    I --> J{Sell Conditions Met?}
+    J -->|Yes| K[Progressive Selling Execution]
+    J -->|No| L[Continue Monitoring]
+    
+    K --> M[Chunk 1: 40% of Position]
+    M --> N[Wait 30 seconds]
+    N --> O[Chunk 2: 40% of Position]
+    O --> P[Wait 30 seconds]
+    P --> Q[Chunk 3: 20% of Position]
+    
+    Q --> R[Position Closed]
+    L --> S[Update Price & Metrics]
+    S --> T[Check Trailing Stop]
+    T --> U[Check Stop Loss]
+    U --> V[Check Take Profit]
+    V --> W[Check Liquidity]
+    W --> X[Check Volume]
+    X --> Y[Check Time Limits]
+    Y --> J
+    
+    style A fill:#e1f5fe
+    style K fill:#f3e5f5
+    style R fill:#e8f5e8
+    style D fill:#fff3e0
+
+```
 ## Installation
 
 To set up the Solana PumpFun Sniper Bot, please follow these instructions:
