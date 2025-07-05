@@ -95,6 +95,45 @@ flowchart TD
 
 ```
 
+
+```mermaid
+graph TD
+    A[Transaction Parsing] --> B{Transaction Type}
+    
+    B -->|Buy Transaction| C[PumpFun Buy]
+    B -->|Sell Transaction| D[PumpFun Sell]
+    B -->|Buy Transaction| E[PumpSwap Buy]
+    B -->|Sell Transaction| F[PumpSwap Sell]
+    
+    C --> G[❌ OLD: virtual_sol / virtual_token<br/>✅ NEW: sol_amount / token_amount]
+    D --> H[❌ OLD: virtual_sol / virtual_token<br/>✅ NEW: sol_amount / token_amount]
+    E --> I[❌ OLD: quote_reserve / base_reserve<br/>✅ NEW: quote_amount_out / base_amount_in]
+    F --> J[❌ OLD: quote_reserve / base_reserve<br/>✅ NEW: quote_amount_out / base_amount_in]
+    
+    G --> K[Correct Buy Price]
+    H --> L[Correct Sell Price]
+    I --> M[Correct Buy Price]
+    J --> N[Correct Sell Price]
+    
+    K --> O[Accurate PnL Calculation]
+    L --> O
+    M --> O
+    N --> O
+    
+    O --> P[Proper Selling Decisions]
+    
+    style G fill:#ffebee
+    style H fill:#ffebee
+    style I fill:#ffebee
+    style J fill:#ffebee
+    style K fill:#e8f5e8
+    style L fill:#e8f5e8
+    style M fill:#e8f5e8
+    style N fill:#e8f5e8
+    style O fill:#e1f5fe
+    style P fill:#f3e5f5
+
+```
 ## Installation
 
 To set up the Solana PumpFun Sniper Bot, please follow these instructions:
