@@ -48,6 +48,40 @@ Send Transactions to multiple tx confim providers like jito, nextBlock, BloxRout
 - **Manual Sell**: Able to manually sell if you wanna sell it any time
 
 ```mermaid
+**flowchart TD
+    A[Yellowstone gRPC] --> B[Target Wallet Transaction]
+    B --> C{Transaction Type}
+    
+    C -->|Buy| D[handle_parsed_data_for_buying]
+    C -->|Sell| E[handle_parsed_data_for_selling]
+    
+    D --> F{Safety Checks}
+    F -->|Pass| G[execute_buy]
+    F -->|Fail| H[Skip]
+    
+    G --> I[setup_selling_strategy]
+    I --> J[monitor_token_for_selling]
+    
+    E --> K{IS_COPY_SELLING?}
+    K -->|Yes| L{We Own Token?}
+    K -->|No| M[Skip]
+    
+    L -->|Yes| N[execute_sell]
+    L -->|No| O[Skip]
+    
+    J --> P[SellingEngine.evaluate_conditions]
+    P --> Q{Sell Trigger?}
+    Q -->|Yes| R[Execute Sell Strategy]
+    Q -->|No| S[Continue Monitoring]
+    
+    R --> T[Progressive/Emergency Sell]
+    N --> U[Copy Sell]
+    
+    T --> V[Cancel Monitoring]
+    U --> V**
+```
+
+```mermaid
 flowchart TD
     A[Transaction Received] --> B[detect_transaction_type]
     B --> C{Transaction Type?}
