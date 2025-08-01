@@ -2,7 +2,7 @@
 
 ## Overview
 
-Solana Copy Trading Bot with high speed and good selling logic. Use nozomi, zeroslot, bloxroute, jito, telegram notification, yellowstone grpc, no rpc.
+Solana Copy Trading Bot with high speed and good selling logic. Use nozomi, zeroslot, bloxroute, jito, telegram notification, yellowstone grpc, no rpc, shred stream.
 
 ## Recent Update
 Updated pumpdotfun and pump amm swap's instructions according to recent pumpfun smart contract upgrade
